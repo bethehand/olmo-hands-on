@@ -15,7 +15,8 @@ Goal: run Ai2's own RL code ([open-instruct](https://github.com/allenai/open-ins
 | 2 | `uv sync` (Python 3.12, torch 2.10, vLLM 0.19) | done: 27 min, 14 GB |
 | 2b | [`scripts/check_env.py`](scripts/check_env.py): torch sees the GPU, bf16 matmul runs | done |
 | 3 | `scripts/train/debug/grpo_fast.sh` as-is, one GPU | done: stops at startup with `Unknown device name` ([traceback](notes/traceback_desktop_4090.txt)), as expected from the code |
-| 3b | Same script with the desktop 4090 added to `GPU_SPECS` | running |
+| 3b | Same script with the desktop 4090 added to `GPU_SPECS` | got past startup (peak 21 GB on GPU 0), then failed in the first training step: snag 8 |
+| 3c | Same, with `CUDA_HOME` pointing at a CUDA 12 toolkit | running |
 | 4 | OLMo 2 1B RLVR recipe from `docs/olmo2.md`, scaled down to 4 GPUs and 10 steps | to do |
 
 ## Snags found so far
@@ -23,10 +24,11 @@ Goal: run Ai2's own RL code ([open-instruct](https://github.com/allenai/open-ins
 1. **The desktop RTX 4090 isn't in `GPU_SPECS`.** `grpo_fast.py` builds `ModelDims` at startup (line 1292 at `ff32794`). That looks up the GPU name in `open_instruct/utils.py:GPU_SPECS`, which only has `"4090 laptop"`. A desktop card reports `NVIDIA GeForce RTX 4090`, nothing matches, and the run stops with `ValueError: Unknown device name`. The numbers are only used for the MFU log line. Fix: add a `"4090"` entry *after* `"4090 laptop"` (the lookup takes the first key that matches, so the order matters). Confirmed on the machine: the [traceback](notes/traceback_desktop_4090.txt) goes `grpo_fast.py:1292` → `ModelDims.from_hf_config` → `get_device_name`. The numbers (165.2 TFLOPS dense BF16 with FP32 accumulate, 24 GB, 1008 GB/s) are from Table 2 of NVIDIA's Ada Lovelace architecture whitepaper.
 2. **`push_to_hub` defaults to `True`.** Pass `--push_to_hub false` for local runs, or the trainer tries to upload the model at the end. This matters if you're logged in to Hugging Face.
 3. **`scripts/train/debug/single_gpu_grpo.sh` needs Ai2's Beaker cluster.** Use `scripts/train/debug/grpo_fast.sh`, which calls the trainer directly.
-4. **`--use_cpu_adam` isn't a quick fix for memory.** It also needs `--deepspeed_offload_optimizer true`, and DeepSpeed compiles an op the first time, which needs a CUDA 12 `nvcc`. This machine has 11.5, so it would fail here.
+4. **`--use_cpu_adam` isn't a quick fix for memory.** It also needs `--deepspeed_offload_optimizer true`, and DeepSpeed compiles an op the first time, which needs a CUDA 12 `nvcc`. The `nvcc` on `PATH` here is 11.5; point `CUDA_HOME` at a CUDA 12 toolkit first (snag 8).
 5. **On a shared machine, give Ray its own temp dir** (`RAY_TMPDIR=/tmp/ray_$USER`), so you don't create a `/tmp/ray` that other users can't write to.
 6. **Ray workers can fail to start when the driver runs under `uv run`.** The debug script launches with `uv run --active`. Ray 2.53 then starts its workers with `uv run` too (`RAY_ENABLE_UV_RUN_RUNTIME_ENV`, on by default). With uv 0.12, this project's environment lives inside uv's cache (`.venv` is a link into `<cache>/environments-v2/`), so uv refuses: `The project directory ... is inside the cache directory`. The workers never come up, and the run just hangs with no GPU use. Fix: `export RAY_ENABLE_UV_RUN_RUNTIME_ENV=0`, so the workers use the same Python directly.
-7. **Slow downloads from Hugging Face here (0.3–1 MB/s).** The first run sat at 88% of a model download for 15+ minutes. Fetch models with `hf download <repo>` before a run (it resumes), and set `HF_HUB_DOWNLOAD_TIMEOUT=60`.
+7. **Slow downloads from Hugging Face here (0.3–1.5 MB/s, while the same machine pulls PyPI's CDN at 47 MB/s).** It's the route to Hugging Face's CDN, not the bandwidth. The first run sat at 88% of a model download for 15+ minutes. Fetch models with `hf download <repo>` before a run (it resumes), and set `HF_HUB_DOWNLOAD_TIMEOUT=60`. I relayed the big checkpoints through another machine.
+8. **Qwen3.5's linear-attention backward compiles a kernel at run time, and an old `nvcc` can't target the 4090.** flash-linear-attention dispatches `chunk_bwd_dqkwg` to TileLang, which calls whatever `nvcc` it finds. Here that was Ubuntu's `/usr/bin/nvcc` (CUDA 11.5): `nvcc fatal : Value 'sm_89' is not defined for option 'gpu-architecture'` (sm_89 needs CUDA 11.8+). The machine also had CUDA 12.4 in `/usr/local/cuda-12.4`, just not on `PATH`. Fix: `export CUDA_HOME=/usr/local/cuda-12.4` and put `$CUDA_HOME/bin` first on `PATH`. Models with plain attention (OLMo 2, Olmo 3) don't go through this.
 
 Good news: torch 2.10's CUDA 12.8 wheels work on driver 550 (CUDA 12.4). No driver upgrade needed so far.
 
