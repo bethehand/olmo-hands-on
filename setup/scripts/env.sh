@@ -7,6 +7,7 @@ export PATH="$CUDA_HOME/bin:$PATH"
 export UV_CACHE_DIR=$OI_WORK/uv-cache           # keep uv's download cache off the system disk
 export HF_HUB_CACHE=$OI_WORK/hf-hub             # model cache (the login token stays in ~/.cache/huggingface)
 export HF_DATASETS_CACHE=$OI_WORK/hf-datasets
+export HF_HUB_DISABLE_XET=1                       # on a network where Xet transfers stall, fall back to plain HTTP
 export VLLM_ALLOW_INSECURE_SERIALIZATION=1
 export RAY_TMPDIR=/tmp/ray_$USER                 # don't take over /tmp/ray on a shared machine
 export RAY_ENABLE_UV_RUN_RUNTIME_ENV=0            # start Ray workers with this Python, not `uv run` (see setup/README.md, snag 6)
