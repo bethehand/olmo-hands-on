@@ -18,7 +18,7 @@ Goal: run Ai2's own RL code ([open-instruct](https://github.com/allenai/open-ins
 | 3b | Same script with the desktop 4090 added to `GPU_SPECS` | got past startup (peak 21 GB on GPU 0), then failed in the first training step: snag 8 |
 | 3c | Same, with `CUDA_HOME` pointing at a CUDA 12 toolkit | compiled fine, then out of memory on one 24 GB card, even with `--vllm_gpu_memory_utilization 0.25 --gradient_checkpointing` (trainer 15.6 GB + vLLM 6.8 GB, wanted 2.8 GB more): snag 9 |
 | 3d | Same on two GPUs: `--single_gpu_mode false`, trainer on one card, vLLM on the other | **done: 4 steps in 204 s, `Saving final model at step 4`, exit 0.** Peak 20.8 GB (trainer) and 11.7 GB (vLLM). Mean reward per step 4.4, 5.0, 2.5, 5.6 (10 per correct answer), as noisy as you'd expect from 4 steps |
-| 4 | OLMo 2 1B RLVR recipe, 4 GPUs, 10 steps | running |
+| 4 | OLMo 2 1B RLVR recipe ([`run_olmo2_1b.sh`](scripts/run_olmo2_1b.sh)), 4 GPUs (2 learners + 2 vLLM engines), 10 steps | **done on the first try: 447 s in all, `Saving final model at step 10`, exit 0.** vLLM start-up 1 min 43 s; training part 13–38 s per step (mean 21 s) at 64 answers per step. Learner GPUs peaked at 24.2 and 23.6 GB, so there's no headroom for bigger batches without a third learner. Answers 85–347 tokens; correct rate around 0.5 and noisy, as expected |
 
 ## Snags found so far
 
