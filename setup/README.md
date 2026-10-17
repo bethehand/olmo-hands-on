@@ -34,6 +34,21 @@ Goal: run Ai2's own RL code ([open-instruct](https://github.com/allenai/open-ins
 
 Good news: torch 2.10's CUDA 12.8 wheels work on driver 550 (CUDA 12.4). No driver upgrade needed so far.
 
+## Snags when running Olmo 3 checkpoints and Ai2's eval tools (2026-10-18)
+
+10. **Olmo 3 configs vs transformers 5.x.** Olmo 3 checkpoints ship a transformers-4.57-style YaRN config: `rope_scaling` with integer `beta_fast`/`beta_slow`, and `rope_theta` outside it. transformers 5.x rejects it (`KeyError: 'rope_theta'`, then "beta_fast must be a float"). For your own scripts, load a folder that links the weights and holds a converted config ([`make_model_views.py`](https://github.com/bethehand/olmo-rlvr-side-effects/blob/main/experiments/make_model_views.py)). For Ai2's eval tools, pin transformers 4.57.1 (snag 16).
+11. **Olmo-3-7B-RL-Zero-General's `model_type` is `olmo2-retrofit`**, the pre-release name of the Olmo 3 architecture. Every other field matches; map it to `olmo3` / `Olmo3ForCausalLM`.
+12. **vLLM's offline `LLM` (V1 engine) needs an `if __name__ == "__main__":` guard.** It spawns worker processes that re-import your script.
+13. **`hf download --exclude` takes one pattern per flag** (hub 1.x CLI). `--exclude "*.bin" "*.pt"` treats the extra patterns as file names: it downloads 0 files and exits 0, so a retry loop reports success. Repeat the flag: `--exclude "*.bin" --exclude "*.pt"`. Some repos (Olmo-3-7B-Think-DPO, allenai/wildguard) carry duplicate `.bin` weights next to the safetensors.
+14. **One connection to Hugging Face got about 3 MB/s here; many at once reached 60 MB/s.** `hf download` fetches up to 8 files of a repo in parallel, so each repo's last big file crawls. Start the next repos instead of queueing them.
+15. **vLLM's default `gpu_memory_utilization=0.9` runs out of memory on 24 GB cards with Olmo 3 7B**, during start-up ("CUDA out of memory occurred when warming up sampler with 256 dummy requests"). 0.85 works. With tensor parallel 2, that leaves a 49,920-token KV cache. A Think model that loops can fill its whole 65,536-token window at about 44 tokens/s for a single sequence.
+16. **allenai/safety-eval outside OLMES** (OLMES installs it with `uv pip install -e` and runs it with API keys set):
+    - put the repo on `PYTHONPATH`, or `python evaluation/run_all_generation_benchmarks.py` can't import `evaluation`;
+    - set a placeholder `OPENAI_API_KEY`, because `src/dispatch_openai_requests.py` builds an OpenAI client at import time, even for tasks that only use local judges;
+    - its requirements are open-ended (`transformers>=4.57.0`, `datasets>=2.19.0`). Today that resolves to transformers 5.x (snag 10) and to a `datasets` that needs huggingface_hub 2.x. Pin transformers 4.57.1, huggingface_hub 0.36.2 and datasets 4.4.1 (the releases current when Ai2 evaluated Olmo 3);
+    - its vLLM calls take no memory settings, so on 24 GB cards you need a small patch for snag 15 ([ours](https://github.com/bethehand/olmo-rlvr-side-effects/blob/main/experiments/2026-10-18_think7b-safety/safety-eval-memory.patch) reads it from an environment variable; unset means upstream behaviour).
+    - StrongReject's judge merges a LoRA onto google/gemma-2b, which is gated (manual approval on Hugging Face).
+
 ## Scripts
 - [`scripts/env.sh`](scripts/env.sh): paths and caches. Set `OI_WORK` to a big disk first.
 - [`scripts/check_env.py`](scripts/check_env.py): torch, CUDA and a bf16 matmul on GPU 0; versions of vLLM, DeepSpeed and FlashAttention.
