@@ -7,4 +7,6 @@ export HF_HUB_CACHE=$OI_WORK/hf-hub             # model cache (the login token s
 export HF_DATASETS_CACHE=$OI_WORK/hf-datasets
 export VLLM_ALLOW_INSECURE_SERIALIZATION=1
 export RAY_TMPDIR=/tmp/ray_$USER                 # don't take over /tmp/ray on a shared machine
+export RAY_ENABLE_UV_RUN_RUNTIME_ENV=0            # start Ray workers with this Python, not `uv run` (see setup/README.md, snag 6)
+export HF_HUB_DOWNLOAD_TIMEOUT=60                 # slow links: wait longer before a download read times out
 cd $OI_WORK/open-instruct

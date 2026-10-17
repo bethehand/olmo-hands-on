@@ -1,0 +1,19 @@
+# grpo_fast.py on a desktop RTX 4090, open-instruct ff32794, unchanged (2026-10-17)
+# Command: scripts/train/debug/grpo_fast.sh on one GPU. Paths shortened to <env>.
+
+
+Traceback (most recent call last):
+  File "<env>/open_instruct/grpo_fast.py", line 2409, in <module>
+    main(args, tokenizer_config, model_config, streaming_config, vllm_config, tools_config)
+  File "<env>/open_instruct/grpo_fast.py", line 2296, in main
+    ) = create_model_and_optimizer(
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<env>/open_instruct/grpo_fast.py", line 1292, in create_model_and_optimizer
+    model_dims = utils.ModelDims.from_hf_config(model_config.model_name_or_path)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<env>/open_instruct/utils.py", line 1932, in from_hf_config
+    device_name=get_device_name(torch.cuda.get_device_name(0)) if torch.cuda.is_available() else None,
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<env>/open_instruct/utils.py", line 2516, in get_device_name
+    raise ValueError(
+ValueError: Unknown device name: NVIDIA GeForce RTX 4090. Expected one of: ['a100', 'b200', 'b300', 'h100', 'h200', 'a6000', 'l40s', 'pro 6000', '6000', '4090 laptop', 'gb10']. Please raise an issue at https://github.com/allenai/open-instruct/issues with the device you need. In the interim, you can add the specs for your device 

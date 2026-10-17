@@ -8,7 +8,7 @@ Independent work by [Qirun Li](https://github.com/bethehand). Not affiliated wit
 
 | Date | Where | What | Status |
 |---|---|---|---|
-| 2026-10-17 | open-instruct | The desktop RTX 4090 is missing from `GPU_SPECS`, so `grpo_fast.py` stops at startup with `Unknown device name`. One-line fix plus a test. | Found; PR coming |
+| 2026-10-17 | open-instruct | The desktop RTX 4090 is missing from `GPU_SPECS`, so `grpo_fast.py` stops at startup with `Unknown device name`. One-line fix plus a test. | Reproduced on the machine; fix and test ready; PR coming |
 
 ## Layout
 
