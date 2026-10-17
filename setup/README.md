@@ -16,8 +16,9 @@ Goal: run Ai2's own RL code ([open-instruct](https://github.com/allenai/open-ins
 | 2b | [`scripts/check_env.py`](scripts/check_env.py): torch sees the GPU, bf16 matmul runs | done |
 | 3 | `scripts/train/debug/grpo_fast.sh` as-is, one GPU | done: stops at startup with `Unknown device name` ([traceback](notes/traceback_desktop_4090.txt)), as expected from the code |
 | 3b | Same script with the desktop 4090 added to `GPU_SPECS` | got past startup (peak 21 GB on GPU 0), then failed in the first training step: snag 8 |
-| 3c | Same, with `CUDA_HOME` pointing at a CUDA 12 toolkit | running |
-| 4 | OLMo 2 1B RLVR recipe from `docs/olmo2.md`, scaled down to 4 GPUs and 10 steps | to do |
+| 3c | Same, with `CUDA_HOME` pointing at a CUDA 12 toolkit | compiled fine, then out of memory on one 24 GB card, even with `--vllm_gpu_memory_utilization 0.25 --gradient_checkpointing` (trainer 15.6 GB + vLLM 6.8 GB, wanted 2.8 GB more): snag 9 |
+| 3d | Same on two GPUs: `--single_gpu_mode false`, trainer on one card, vLLM on the other | **done: 4 steps in 204 s, `Saving final model at step 4`, exit 0.** Peak 20.8 GB (trainer) and 11.7 GB (vLLM). Mean reward per step 4.4, 5.0, 2.5, 5.6 (10 per correct answer), as noisy as you'd expect from 4 steps |
+| 4 | OLMo 2 1B RLVR recipe, 4 GPUs, 10 steps | running |
 
 ## Snags found so far
 
@@ -29,6 +30,7 @@ Goal: run Ai2's own RL code ([open-instruct](https://github.com/allenai/open-ins
 6. **Ray workers can fail to start when the driver runs under `uv run`.** The debug script launches with `uv run --active`. Ray 2.53 then starts its workers with `uv run` too (`RAY_ENABLE_UV_RUN_RUNTIME_ENV`, on by default). With uv 0.12, this project's environment lives inside uv's cache (`.venv` is a link into `<cache>/environments-v2/`), so uv refuses: `The project directory ... is inside the cache directory`. The workers never come up, and the run just hangs with no GPU use. Fix: `export RAY_ENABLE_UV_RUN_RUNTIME_ENV=0`, so the workers use the same Python directly.
 7. **Slow downloads from Hugging Face here (0.3–1.5 MB/s, while the same machine pulls PyPI's CDN at 47 MB/s).** It's the route to Hugging Face's CDN, not the bandwidth. The first run sat at 88% of a model download for 15+ minutes. Fetch models with `hf download <repo>` before a run (it resumes), and set `HF_HUB_DOWNLOAD_TIMEOUT=60`. I relayed the big checkpoints through another machine.
 8. **Qwen3.5's linear-attention backward compiles a kernel at run time, and an old `nvcc` can't target the 4090.** flash-linear-attention dispatches `chunk_bwd_dqkwg` to TileLang, which calls whatever `nvcc` it finds. Here that was Ubuntu's `/usr/bin/nvcc` (CUDA 11.5): `nvcc fatal : Value 'sm_89' is not defined for option 'gpu-architecture'` (sm_89 needs CUDA 11.8+). The machine also had CUDA 12.4 in `/usr/local/cuda-12.4`, just not on `PATH`. Fix: `export CUDA_HOME=/usr/local/cuda-12.4` and put `$CUDA_HOME/bin` first on `PATH`. Models with plain attention (OLMo 2, Olmo 3) don't go through this.
+9. **The one-GPU debug script doesn't fit on a 24 GB card with Qwen3.5-0.8B.** Lowering vLLM's share to 25% and turning on gradient checkpointing still left it 2.8 GB short. Running it on two cards (`--single_gpu_mode false`) works.
 
 Good news: torch 2.10's CUDA 12.8 wheels work on driver 550 (CUDA 12.4). No driver upgrade needed so far.
 
