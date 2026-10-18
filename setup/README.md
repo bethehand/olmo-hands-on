@@ -46,7 +46,9 @@ Good news: torch 2.10's CUDA 12.8 wheels work on driver 550 (CUDA 12.4). No driv
     - put the repo on `PYTHONPATH`, or `python evaluation/run_all_generation_benchmarks.py` can't import `evaluation`;
     - set a placeholder `OPENAI_API_KEY`, because `src/dispatch_openai_requests.py` builds an OpenAI client at import time, even for tasks that only use local judges;
     - its requirements are open-ended (`transformers>=4.57.0`, `datasets>=2.19.0`). Today that resolves to transformers 5.x (snag 10) and to a `datasets` that needs huggingface_hub 2.x. Pin transformers 4.57.1, huggingface_hub 0.36.2 and datasets 4.4.1 (the releases current when Ai2 evaluated Olmo 3);
-    - its vLLM calls take no memory settings, so on 24 GB cards you need a small patch for snag 15 ([ours](https://github.com/bethehand/olmo-rlvr-side-effects/blob/main/experiments/2026-10-18_think7b-safety/safety-eval-memory.patch) reads it from an environment variable; unset means upstream behaviour).
+    - its vLLM calls take no memory settings, so on 24 GB cards you need a small patch for snag 15 ([ours](https://github.com/bethehand/olmo-rlvr-side-effects/blob/main/experiments/2026-10-18_think7b-safety/safety-eval-local-changes.patch) reads it from an environment variable; unset means upstream behaviour);
+    - `run_all_generation_benchmarks.py` numbers GPUs from 0 and ignores the caller's `CUDA_VISIBLE_DEVICES`: a run started on GPUs 2,3 launches its tasks with `CUDA_VISIBLE_DEVICES=0,1`. If 0,1 are busy, the task fails with CUDA OOM at start-up;
+    - when the vLLM subprocess dies before returning results, the parent waits on the pipe forever, so a failed task hangs instead of failing. Both are fixed in the same patch.
     - StrongReject's judge merges a LoRA onto google/gemma-2b, which is gated (manual approval on Hugging Face).
 
 ## Scripts
