@@ -51,6 +51,22 @@ Good news: torch 2.10's CUDA 12.8 wheels work on driver 550 (CUDA 12.4). No driv
     - when the vLLM subprocess dies before returning results, the parent waits on the pipe forever, so a failed task hangs instead of failing. Both are fixed in the same patch.
     - StrongReject's judge merges a LoRA onto google/gemma-2b, which is gated (manual approval on Hugging Face).
 
+## Running 32B evals on 4× 24 GB (2026-10-18/19)
+
+17. **32B in bf16 needs tensor parallel 4, and vLLM's default memory settings fail at start-up.** With `gpu_memory_utilization=0.85` and the default `max_num_seqs` (256), Olmo 3.1 32B runs out of memory at start-up. The parent then hangs. Its workers (`VLLM::Worker_TP*`) are reparented to init and keep about 24 GB per GPU, so every following job fails within seconds. `gpu_memory_utilization=0.80` with `max_num_seqs=64` works. Before each job, kill your own orphaned `VLLM::` processes on those GPUs and wait until their memory is free.
+18. **The Olmo 3.1 32B Instruct SFT and DPO checkpoints are stored in fp32**, twice the size of the others. Load them with `dtype=bfloat16`.
+19. **The KV cache, not compute, sets the speed.**
+    - 32B, tensor parallel 4, 0.80: weights take 15.2 GiB per GPU, leaving a 3.0 GiB KV cache (49,616 tokens).
+    - 7B, tensor parallel 2, 0.85: a 12.2 GiB KV cache, but still only 49,920 tokens, because Olmo 3 7B uses full multi-head attention (32 KV heads).
+    - Either way, that holds only about 16 answers of 3K tokens at once, so for Think models `max_num_seqs` hardly matters. The cards aren't throttled (about 2.6 GHz, 190–230 W of 350 W).
+    - At 0.80 on 32B, about 2.7 GB per card sits unused, so a smoke-tested 0.86 is probably a cheap speed-up.
+20. **No peer-to-peer between GeForce cards.** vLLM turns its custom all-reduce off for tensor parallel 4 ("not supported on more than two PCIe-only GPUs"), so every layer's all-reduce goes through NCCL and host memory.
+21. **A few runaway outputs set the wall time.**
+    - A Think output that loops writes until the 32K cap, which takes about 25–30 minutes on 32B (around 20 tokens/s).
+    - On 3.1 32B Instruct, the last 5 of 805 prompts took 44–69% of each run.
+    - 805 prompts took 2.1–2.6 h per 32B Think stage, 20–30 min per 32B Instruct stage, and 1.4–3 h per 7B Think stage on 2 GPUs.
+22. **Start-up is cheap: about 2 minutes per job.** Weights load from the page cache in 13–49 s, `torch.compile` takes about 45 s the first time for a 32B, and CUDA graph capture 6–25 s. One job per checkpoint is fine.
+
 ## Scripts
 - [`scripts/env.sh`](scripts/env.sh): paths and caches. Set `OI_WORK` to a big disk first.
 - [`scripts/check_env.py`](scripts/check_env.py): torch, CUDA and a bf16 matmul on GPU 0; versions of vLLM, DeepSpeed and FlashAttention.
